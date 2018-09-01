@@ -23,9 +23,12 @@ import static org.openqa.selenium.OutputType.BASE64;
 import static org.slf4j.LoggerFactory.getLogger;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -139,6 +142,18 @@ public class OpenViduTestAppE2eTest {
 		secretInput.clear();
 		secretInput.sendKeys(OPENVIDU_SECRET);
 
+		user.getEventManager().startPolling();
+	}
+
+	void setupChromeWithFakeVideo(Path videoFileLocation) {
+		this.user = new ChromeUser("TestUser", 50, videoFileLocation);
+		user.getDriver().get(APP_URL);
+		WebElement urlInput = user.getDriver().findElement(By.id("openvidu-url"));
+		urlInput.clear();
+		urlInput.sendKeys(OPENVIDU_URL);
+		WebElement secretInput = user.getDriver().findElement(By.id("openvidu-secret"));
+		secretInput.clear();
+		secretInput.sendKeys(OPENVIDU_SECRET);
 		user.getEventManager().startPolling();
 	}
 
@@ -551,10 +566,10 @@ public class OpenViduTestAppE2eTest {
 
 		setupBrowser("chrome");
 
-		log.info("Signal message");
+		log.info("Subscribe Unsubscribe");
 
 		user.getDriver().findElement(By.id("one2one-btn")).click();
-		user.getDriver().findElements(By.className("publish-checkbox")).get(0).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .publish-checkbox")).click();
 
 		List<WebElement> joinButtons = user.getDriver().findElements(By.className("join-btn"));
 		for (WebElement el : joinButtons) {
@@ -571,15 +586,15 @@ public class OpenViduTestAppE2eTest {
 				true, true));
 
 		// Global unsubscribe-subscribe
+		WebElement subscriberVideo = user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 video"));
+		WebElement subBtn = user.getDriver().findElement(By.cssSelector(("#openvidu-instance-0 .sub-btn")));
+		subBtn.click();
 
-		user.getDriver().findElements(By.className(("sub-btn"))).get(0).click();
+		user.getWaiter()
+				.until(ExpectedConditions.not(ExpectedConditions.attributeToBeNotEmpty(subscriberVideo, "srcObject")));
+		Assert.assertFalse(user.getEventManager().hasMediaStream(subscriberVideo));
 
-		user.getWaiter().until(ExpectedConditions.not(ExpectedConditions
-				.attributeToBeNotEmpty(user.getDriver().findElements(By.tagName("video")).get(0), "srcObject")));
-		Assert.assertFalse(
-				user.getEventManager().hasMediaStream(user.getDriver().findElements(By.tagName("video")).get(0)));
-
-		user.getDriver().findElements(By.className(("sub-btn"))).get(0).click();
+		subBtn.click();
 		user.getEventManager().waitUntilEventReaches("streamPlaying", 3);
 
 		Assert.assertEquals(user.getDriver().findElements(By.tagName("video")).size(), 2);
@@ -587,24 +602,24 @@ public class OpenViduTestAppE2eTest {
 				true, true));
 
 		// Video unsubscribe
-
-		Iterable<WebElement> firstVideo = Arrays.asList(user.getDriver().findElements(By.tagName("video")).get(0));
-		user.getDriver().findElements(By.className(("sub-video-btn"))).get(0).click();
+		subscriberVideo = user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 video"));
+		Iterable<WebElement> firstVideo = Arrays.asList(subscriberVideo);
+		user.getDriver().findElement(By.cssSelector(("#openvidu-instance-0 .sub-video-btn"))).click();
 		Thread.sleep(1000);
 		Assert.assertTrue(user.getEventManager().assertMediaTracks(firstVideo, true, false));
 
 		// Audio unsubscribe
 
-		user.getDriver().findElements(By.className(("sub-audio-btn"))).get(0).click();
+		user.getDriver().findElement(By.cssSelector(("#openvidu-instance-0 .sub-audio-btn"))).click();
 		Thread.sleep(1000);
 		Assert.assertTrue(user.getEventManager().assertMediaTracks(firstVideo, false, false));
 
 		// Video and audio subscribe
 
-		user.getDriver().findElements(By.className(("sub-video-btn"))).get(0).click();
+		user.getDriver().findElement(By.cssSelector(("#openvidu-instance-0 .sub-video-btn"))).click();
 		Thread.sleep(1000);
 		Assert.assertTrue(user.getEventManager().assertMediaTracks(firstVideo, false, true));
-		user.getDriver().findElements(By.className(("sub-audio-btn"))).get(0).click();
+		user.getDriver().findElement(By.cssSelector(("#openvidu-instance-0 .sub-audio-btn"))).click();
 		Thread.sleep(1000);
 		Assert.assertTrue(user.getEventManager().assertMediaTracks(firstVideo, true, true));
 
@@ -721,7 +736,7 @@ public class OpenViduTestAppE2eTest {
 			}
 			latch2.countDown();
 		});
-		user.getDriver().findElements(By.className("change-publisher-btn")).get(0).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .change-publisher-btn")).click();
 		user.getEventManager().waitUntilEventReaches("streamDestroyed", 2);
 		user.getEventManager().waitUntilEventReaches("accessAllowed", 2);
 		user.getEventManager().waitUntilEventReaches("streamCreated", 4);
@@ -753,7 +768,7 @@ public class OpenViduTestAppE2eTest {
 			}
 			latch3.countDown();
 		});
-		user.getDriver().findElements(By.className("change-publisher-btn")).get(0).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .change-publisher-btn")).click();
 		user.getEventManager().waitUntilEventReaches("streamDestroyed", 4);
 		user.getEventManager().waitUntilEventReaches("accessAllowed", 3);
 		user.getEventManager().waitUntilEventReaches("streamCreated", 6);
@@ -779,8 +794,78 @@ public class OpenViduTestAppE2eTest {
 	}
 
 	@Test
+	@DisplayName("Moderator capabilities")
+	void moderatorCapabilitiesTest() throws Exception {
+
+		setupBrowser("chrome");
+
+		log.info("Moderator capabilities");
+
+		// Add publisher
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+
+		// Add subscriber
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-1 .publish-checkbox")).click();
+
+		// Add and configure moderator (only subscribe)
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-2 .publish-checkbox")).click();
+		user.getDriver().findElement(By.id("session-settings-btn-2")).click();
+		Thread.sleep(1000);
+
+		user.getDriver().findElement(By.id("radio-btn-mod")).click();
+		user.getDriver().findElement(By.id("save-btn")).click();
+		Thread.sleep(1000);
+
+		List<WebElement> joinButtons = user.getDriver().findElements(By.className("join-btn"));
+		for (WebElement el : joinButtons) {
+			el.sendKeys(Keys.ENTER);
+		}
+
+		user.getEventManager().waitUntilEventReaches("connectionCreated", 9);
+		user.getEventManager().waitUntilEventReaches("accessAllowed", 1);
+		user.getEventManager().waitUntilEventReaches("streamCreated", 3);
+		user.getEventManager().waitUntilEventReaches("streamPlaying", 3);
+
+		try {
+			System.out.println(getBase64Screenshot(user));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		user.getWaiter().until(ExpectedConditions.numberOfElementsToBe(By.tagName("video"), 3));
+		Assert.assertTrue(user.getEventManager().assertMediaTracks(user.getDriver().findElements(By.tagName("video")),
+				true, true));
+
+		// Moderator forces unpublish
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-2 .force-unpub-btn")).click();
+		user.getEventManager().waitUntilEventReaches("streamDestroyed", 3);
+		user.getWaiter().until(ExpectedConditions.numberOfElementsToBe(By.tagName("video"), 1));
+
+		// Publisher publishes again
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .pub-btn")).click();
+		user.getEventManager().waitUntilEventReaches("streamCreated", 6);
+		user.getEventManager().waitUntilEventReaches("streamPlaying", 6);
+
+		user.getWaiter().until(ExpectedConditions.numberOfElementsToBe(By.tagName("video"), 3));
+		Assert.assertTrue(user.getEventManager().assertMediaTracks(user.getDriver().findElements(By.tagName("video")),
+				true, true));
+
+		// Moderator forces disconnect of publisher
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-2 .force-disconnect-btn")).click();
+		user.getEventManager().waitUntilEventReaches("streamDestroyed", 6);
+		user.getEventManager().waitUntilEventReaches("connectionDestroyed", 2);
+		user.getEventManager().waitUntilEventReaches("sessionDisconnected", 1);
+		user.getWaiter().until(ExpectedConditions.numberOfElementsToBe(By.tagName("video"), 0));
+
+		gracefullyLeaveParticipants(3);
+
+	}
+
+	@Test
 	@DisplayName("Stream property changed event")
-	void streamPropertyChangedEvent() throws Exception {
+	void streamPropertyChangedEventTest() throws Exception {
 
 		Queue<Boolean> threadAssertions = new ConcurrentLinkedQueue<Boolean>();
 
@@ -811,7 +896,7 @@ public class OpenViduTestAppE2eTest {
 			threadAssertions.add(((String) event.get("eventContent")).contains("videoActive [false]"));
 			latch1.countDown();
 		});
-		user.getDriver().findElements(By.className("pub-video-btn")).get(0).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .pub-video-btn")).click();
 		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 2);
 
 		if (!latch1.await(5000, TimeUnit.MILLISECONDS)) {
@@ -832,7 +917,7 @@ public class OpenViduTestAppE2eTest {
 			threadAssertions.add(((String) event.get("eventContent")).contains("audioActive [false]"));
 			latch2.countDown();
 		});
-		user.getDriver().findElements(By.className("pub-audio-btn")).get(0).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .pub-audio-btn")).click();
 		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 4);
 
 		if (!latch2.await(5000, TimeUnit.MILLISECONDS)) {
@@ -902,12 +987,13 @@ public class OpenViduTestAppE2eTest {
 		Assert.assertTrue(user.getEventManager().assertMediaTracks(user.getDriver().findElements(By.tagName("video")),
 				true, true));
 
-		WebElement recordBtn = user.getDriver().findElements(By.className("publisher-rec-btn")).get(0);
+		WebElement recordBtn = user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .publisher-rec-btn"));
 		recordBtn.click();
 
 		Thread.sleep(2000);
 
-		WebElement pauseRecordBtn = user.getDriver().findElements(By.className("publisher-rec-pause-btn")).get(0);
+		WebElement pauseRecordBtn = user.getDriver()
+				.findElement(By.cssSelector("#openvidu-instance-0 .publisher-rec-pause-btn"));
 		pauseRecordBtn.click();
 
 		Thread.sleep(2000);
@@ -920,10 +1006,10 @@ public class OpenViduTestAppE2eTest {
 
 		user.getWaiter().until(ExpectedConditions.elementToBeClickable(By.cssSelector("#recorder-preview video")));
 
-		user.getWaiter().until(waitForVideoDuration(
-				user.getDriver().findElements(By.cssSelector("#recorder-preview video")).get(0), 4));
+		user.getWaiter().until(
+				waitForVideoDuration(user.getDriver().findElement(By.cssSelector("#recorder-preview video")), 4));
 
-		user.getDriver().findElements(By.id("close-record-btn")).get(0).click();
+		user.getDriver().findElement(By.id("close-record-btn")).click();
 
 		user.getWaiter().until(ExpectedConditions.numberOfElementsToBe(By.cssSelector("#recorder-preview video"), 0));
 
@@ -1205,6 +1291,276 @@ public class OpenViduTestAppE2eTest {
 		gracefullyLeaveParticipants(2);
 	}
 
+	@Test
+	@DisplayName("Video filter test")
+	void videoFilterTest() throws Exception {
+
+		setupBrowser("chrome");
+
+		log.info("Video filter test");
+
+		// Configure publisher
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+		user.getDriver().findElements(By.cssSelector("#openvidu-instance-0 .subscribe-checkbox")).get(0).click();
+		user.getDriver().findElements(By.cssSelector("#openvidu-instance-0 .send-audio-checkbox")).get(0).click();
+		user.getDriver().findElement(By.id("session-settings-btn-0")).click();
+		Thread.sleep(1000);
+		user.getDriver().findElement(By.id("add-allowed-filter-btn")).click();
+		user.getDriver().findElement(By.id("save-btn")).click();
+		Thread.sleep(1000);
+
+		// Configure subscriber
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-1 .publish-checkbox")).click();
+
+		List<WebElement> joinButtons = user.getDriver().findElements(By.className("join-btn"));
+		for (WebElement el : joinButtons) {
+			el.sendKeys(Keys.ENTER);
+		}
+
+		user.getEventManager().waitUntilEventReaches("connectionCreated", 4);
+		user.getEventManager().waitUntilEventReaches("accessAllowed", 1);
+		user.getEventManager().waitUntilEventReaches("streamCreated", 2);
+		user.getEventManager().waitUntilEventReaches("streamPlaying", 2);
+
+		try {
+			System.out.println(getBase64Screenshot(user));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		Assert.assertEquals(user.getDriver().findElements(By.tagName("video")).size(), 2);
+		Assert.assertTrue(user.getEventManager().assertMediaTracks(user.getDriver().findElements(By.tagName("video")),
+				false, true));
+
+		WebElement subscriberVideo = user.getDriver().findElement(By.cssSelector("#openvidu-instance-1 video"));
+
+		// Analyze Chrome fake video stream without gray filter (GREEN color)
+		Map<String, Long> rgb = user.getEventManager().getAverageRgbFromVideo(subscriberVideo);
+		System.out.println(rgb.toString());
+		Assert.assertTrue(checkVideoAverageRgbGreen(rgb));
+
+		// Try to apply none allowed filter
+		user.getDriver().findElement(By.cssSelector(".filter-btn")).click();
+		WebElement filterTypeInput = user.getDriver().findElement(By.id("filter-type-field"));
+		filterTypeInput.clear();
+		filterTypeInput.sendKeys("NotAllowedFilter");
+		user.getDriver().findElement(By.id("apply-filter-btn")).click();
+		user.getWaiter().until(ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value",
+				"Error [You don't have permissions to apply a filter]"));
+
+		// Try to execute method over not applied filter
+		user.getDriver().findElement(By.id("exec-filter-btn")).click();
+		user.getWaiter().until(ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value",
+				"has no filter applied in session"));
+
+		// Apply allowed video filter
+		filterTypeInput.clear();
+		filterTypeInput.sendKeys("GStreamerFilter");
+		WebElement filterOptionsInput = user.getDriver().findElement(By.id("filter-options-field"));
+		filterOptionsInput.clear();
+		filterOptionsInput.sendKeys("{\"command\": \"videobalance saturation=0.0\"}");
+		user.getDriver().findElement(By.id("apply-filter-btn")).click();
+		user.getWaiter().until(
+				ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value", "Filter applied"));
+
+		// Try to apply another filter
+		user.getDriver().findElement(By.id("apply-filter-btn")).click();
+		user.getWaiter().until(ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value",
+				"already has a filter applied in session"));
+
+		// Analyze Chrome fake video stream with gray filter (GRAY color)
+		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 2);
+		Thread.sleep(500);
+		rgb = user.getEventManager().getAverageRgbFromVideo(subscriberVideo);
+		System.out.println(rgb.toString());
+		Assert.assertTrue(checkVideoAverageRgbGray(rgb));
+
+		// Execute filter method
+		WebElement filterMethodInput = user.getDriver().findElement(By.id("filter-method-field"));
+		filterMethodInput.clear();
+		filterMethodInput.sendKeys("setElementProperty");
+		WebElement filterParamsInput = user.getDriver().findElement(By.id("filter-params-field"));
+		filterParamsInput.clear();
+		filterParamsInput.sendKeys("{\"propertyName\":\"saturation\",\"propertyValue\":\"1.0\"}");
+		user.getDriver().findElement(By.id("exec-filter-btn")).click();
+		user.getWaiter().until(ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value",
+				"Filter method executed"));
+
+		// Analyze Chrome fake video stream without gray filter (GREEN color)
+		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 4);
+		Thread.sleep(500);
+		rgb = user.getEventManager().getAverageRgbFromVideo(subscriberVideo);
+		System.out.println(rgb.toString());
+		Assert.assertTrue(checkVideoAverageRgbGreen(rgb));
+
+		user.getDriver().findElement(By.id("close-dialog-btn")).click();
+		Thread.sleep(500);
+
+		// Publisher leaves and connects with active filter
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .leave-btn")).click();
+		user.getEventManager().waitUntilEventReaches("streamDestroyed", 2);
+		user.getEventManager().waitUntilEventReaches("connectionDestroyed", 1);
+		user.getEventManager().waitUntilEventReaches("sessionDisconnected", 1);
+		user.getDriver().findElement(By.id("publisher-settings-btn-0")).click();
+		Thread.sleep(500);
+		user.getDriver().findElement(By.id("save-btn")).click();
+		Thread.sleep(500);
+
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .join-btn")).click();
+		user.getEventManager().waitUntilEventReaches("connectionCreated", 7);
+		user.getEventManager().waitUntilEventReaches("accessAllowed", 2);
+		user.getEventManager().waitUntilEventReaches("streamCreated", 4);
+		user.getEventManager().waitUntilEventReaches("streamPlaying", 4);
+
+		// Analyze Chrome fake video stream with gray filter (GRAY color)
+		subscriberVideo = user.getDriver().findElement(By.cssSelector("#openvidu-instance-1 video"));
+		rgb = user.getEventManager().getAverageRgbFromVideo(subscriberVideo);
+		System.out.println(rgb.toString());
+		Assert.assertTrue(checkVideoAverageRgbGray(rgb));
+
+		// Remove filter
+		user.getDriver().findElement(By.cssSelector(".filter-btn")).click();
+		Thread.sleep(500);
+		user.getDriver().findElement(By.id("remove-filter-btn")).click();
+		user.getWaiter().until(
+				ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value", "Filter removed"));
+		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 6);
+		Thread.sleep(1000);
+
+		// Analyze Chrome fake video stream with gray filter (GREEN color)
+		rgb = user.getEventManager().getAverageRgbFromVideo(subscriberVideo);
+		System.out.println(rgb.toString());
+		Assert.assertTrue(checkVideoAverageRgbGreen(rgb));
+
+		user.getDriver().findElement(By.id("close-dialog-btn")).click();
+		gracefullyLeaveParticipants(2);
+	}
+
+	@Test
+	@DisplayName("Video filter events test")
+	void videoFilterEventsTest() throws Exception {
+
+		setupChromeWithFakeVideo(Paths.get("/opt/openvidu/barcode.y4m"));
+
+		log.info("Video filter events test");
+
+		// Configure publisher
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+		user.getDriver().findElements(By.cssSelector("#openvidu-instance-0 .subscribe-checkbox")).get(0).click();
+		user.getDriver().findElements(By.cssSelector("#openvidu-instance-0 .send-audio-checkbox")).get(0).click();
+		user.getDriver().findElement(By.id("session-settings-btn-0")).click();
+		Thread.sleep(1000);
+
+		WebElement allowedFilterInput = user.getDriver().findElement(By.id("allowed-filter-input"));
+		allowedFilterInput.clear();
+		allowedFilterInput.sendKeys("ZBarFilter");
+
+		user.getDriver().findElement(By.id("add-allowed-filter-btn")).click();
+		user.getDriver().findElement(By.id("save-btn")).click();
+		Thread.sleep(1000);
+
+		// Configure moderator (only subscribe)
+		user.getDriver().findElement(By.id("add-user-btn")).click();
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-1 .publish-checkbox")).click();
+		user.getDriver().findElement(By.id("session-settings-btn-1")).click();
+		Thread.sleep(1000);
+
+		user.getDriver().findElement(By.id("radio-btn-mod")).click();
+		user.getDriver().findElement(By.id("save-btn")).click();
+		Thread.sleep(1000);
+
+		List<WebElement> joinButtons = user.getDriver().findElements(By.className("join-btn"));
+		for (WebElement el : joinButtons) {
+			el.sendKeys(Keys.ENTER);
+		}
+
+		user.getEventManager().waitUntilEventReaches("connectionCreated", 4);
+		user.getEventManager().waitUntilEventReaches("accessAllowed", 1);
+		user.getEventManager().waitUntilEventReaches("streamCreated", 2);
+		user.getEventManager().waitUntilEventReaches("streamPlaying", 2);
+
+		try {
+			System.out.println(getBase64Screenshot(user));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		Assert.assertEquals(user.getDriver().findElements(By.tagName("video")).size(), 2);
+		// Assert no audio track only for the moderator incoming video
+		Assert.assertTrue(user.getEventManager().assertMediaTracks(
+				user.getDriver().findElements(By.cssSelector("#openvidu-instance-1 video")), false, true));
+
+		// Publisher applies ZBarCode filter to itself
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-0 .filter-btn")).click();
+		Thread.sleep(500);
+		WebElement input = user.getDriver().findElement(By.id("filter-type-field"));
+		input.clear();
+		input.sendKeys("ZBarFilter");
+		input = user.getDriver().findElement(By.id("filter-options-field"));
+		input.clear();
+		input.sendKeys("{}");
+		user.getDriver().findElement(By.id("apply-filter-btn")).click();
+		user.getWaiter().until(
+				ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value", "Filter applied"));
+
+		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 2);
+
+		// Publisher subscribes to CodeFound event for his own stream
+		input = user.getDriver().findElement(By.id("filter-event-type-field"));
+		input.clear();
+		input.sendKeys("CodeFound");
+		user.getDriver().findElement(By.id("sub-filter-event-btn")).click();
+		user.getWaiter().until(ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value",
+				"Filter event listener added"));
+
+		user.getEventManager().waitUntilEventReaches("filterEvent", 2);
+
+		// Publisher unsubscribes from "CodeFound" filter event
+		user.getDriver().findElement(By.id("unsub-filter-event-btn")).click();
+
+		try {
+			// If this active wait finishes successfully, then the removal of the event
+			// listener has not worked fine
+			user.getEventManager().waitUntilEventReaches("filterEvent", 3, 3, false);
+			Assert.fail("'filterEvent' was received. Filter.removeEventListener() failed");
+		} catch (Exception e) {
+			System.out.println("Filter event removal worked fine");
+		}
+
+		user.getDriver().findElement(By.id("close-dialog-btn")).click();
+		Thread.sleep(500);
+
+		// Moderator subscribes to CodeFound event for the Publisher's stream
+		user.getDriver().findElement(By.cssSelector("#openvidu-instance-1 .filter-btn")).click();
+		Thread.sleep(500);
+		input = user.getDriver().findElement(By.id("filter-event-type-field"));
+		input.clear();
+		input.sendKeys("CodeFound");
+		user.getDriver().findElement(By.id("sub-filter-event-btn")).click();
+		user.getWaiter().until(ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value",
+				"Filter event listener added"));
+
+		user.getEventManager().waitUntilEventReaches("filterEvent", 4);
+
+		// Moderator removes the Publisher's filter
+		user.getDriver().findElement(By.id("remove-filter-btn")).click();
+		user.getWaiter().until(
+				ExpectedConditions.attributeContains(By.id("filter-response-text-area"), "value", "Filter removed"));
+		user.getEventManager().waitUntilEventReaches("streamPropertyChanged", 4);
+
+		try {
+			// If this active wait finishes successfully, then the removal of the filter has
+			// not worked fine
+			user.getEventManager().waitUntilEventReaches("filterEvent", 5, 3, false);
+			Assert.fail("'filterEvent' was received. Stream.removeFilter() failed");
+		} catch (Exception e) {
+			System.out.println("Filter removal worked fine");
+		}
+
+		gracefullyLeaveParticipants(2);
+	}
+
 	private void listEmptyRecordings() {
 		// List existing recordings (empty)
 		user.getDriver().findElement(By.id("list-recording-btn")).click();
@@ -1220,6 +1576,19 @@ public class OpenViduTestAppE2eTest {
 						durationInSeconds - 1 + "\\.[8-9][0-9]{0,5}|" + durationInSeconds + "\\.[0-2][0-9]{0,5}");
 			}
 		};
+	}
+
+	private boolean checkVideoAverageRgbGreen(Map<String, Long> rgb) {
+		// GREEN color: {r < 15, g > 130, b <15}
+		return (rgb.get("r") < 15) && (rgb.get("g") > 130) && (rgb.get("b") < 15);
+	}
+
+	private boolean checkVideoAverageRgbGray(Map<String, Long> rgb) {
+		// GRAY color: {r < 50, g < 50, b < 50} and the absolute difference between them
+		// not greater than 2
+		return (rgb.get("r") < 50) && (rgb.get("g") < 50) && (rgb.get("b") < 50)
+				&& (Math.abs(rgb.get("r") - rgb.get("g")) <= 2) && (Math.abs(rgb.get("r") - rgb.get("b")) <= 2)
+				&& (Math.abs(rgb.get("b") - rgb.get("g")) <= 2);
 	}
 
 	private void gracefullyLeaveParticipants(int numberOfParticipants) throws Exception {

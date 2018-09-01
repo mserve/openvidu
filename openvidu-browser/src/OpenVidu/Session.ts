@@ -16,6 +16,7 @@
  */
 
 import { Connection } from './Connection';
+import { Filter } from './Filter';
 import { OpenVidu } from './OpenVidu';
 import { Publisher } from './Publisher';
 import { Stream } from './Stream';
@@ -108,10 +109,10 @@ export class Session implements EventDispatcher {
 
     /**
      * Connects to the session using `token`. Parameter `metadata` allows you to pass extra data to share with other users when
-     * they receive `streamCreated` event. The structure of `metadata` string is up to you (maybe some standarized format
+     * they receive `streamCreated` event. The structure of `metadata` string is up to you (maybe some standardized format
      * as JSON or XML is a good idea), the only restriction is a maximum length of 10000 chars.
      *
-     * This metadata is not considered secure, as it is generated in the client side. To pass securized data, add it as a parameter in the
+     * This metadata is not considered secure, as it is generated in the client side. To pass secure data, add it as a parameter in the
      * token generation operation (through the API REST, openvidu-java-client or openvidu-node-client).
      *
      * Only after the returned Promise is successfully resolved [[Session.connection]] object will be available and properly defined.
@@ -493,148 +494,6 @@ export class Session implements EventDispatcher {
         });
     }
 
-    applyFilter(stream: Stream, type: string, options: Object): Promise<any> {
-        return new Promise((resolve, reject) => {
-            console.info('Applying filter to stream ' + stream.streamId);
-            options = !!options ? options : {};
-            if (typeof options !== 'string') {
-                options = JSON.stringify(options);
-            }
-            this.openvidu.sendRequest(
-                'applyFilter',
-                { streamId: stream.streamId, type, options },
-                (error, response) => {
-                    if (error) {
-                        console.error('Error applying filter for Stream ' + stream.streamId, error);
-                        if (error.code === 401) {
-                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to apply a filter"));
-                        } else {
-                            reject(error);
-                        }
-                    } else {
-                        console.info('Filter successfully applied on Stream ' + stream.streamId);
-                        const oldValue = JSON.parse(JSON.stringify(stream.filter));
-                        stream.filter = { type, options };
-                        this.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this, stream, 'filter', stream.filter, oldValue, 'applyFilter')]);
-                        stream.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(stream.streamManager, stream, 'filter', stream.filter, oldValue, 'applyFilter')]);
-                        resolve();
-                    }
-                }
-            );
-        });
-    }
-
-    execFilterMethod(stream: Stream, method: string, params: Object): Promise<any> {
-        return new Promise((resolve, reject) => {
-            console.info('Executing filter method to stream ' + stream.streamId);
-            let stringParams;
-            if (typeof params !== 'string') {
-                try {
-                    stringParams = JSON.stringify(params);
-                } catch (error) {
-                    const errorMsg = "'params' property must be a JSON formatted object";
-                    console.error(errorMsg);
-                    reject(errorMsg);
-                }
-            } else {
-                stringParams = <string>params;
-            }
-            this.openvidu.sendRequest(
-                'execFilterMethod',
-                { streamId: stream.streamId, method, params: stringParams },
-                (error, response) => {
-                    if (error) {
-                        console.error('Error executing filter method for Stream ' + stream.streamId, error);
-                        if (error.code === 401) {
-                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to execute a filter method"));
-                        } else {
-                            reject(error);
-                        }
-                    } else {
-                        console.info('Filter method successfully executed on Stream ' + stream.streamId);
-                        const oldValue = JSON.parse(JSON.stringify(stream.filter));
-                        stream.filter.lastExecMethod = { method, params: JSON.parse(stringParams) };
-                        this.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this, stream, 'filter', stream.filter, oldValue, 'execFilterMethod')]);
-                        stream.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(stream.streamManager, stream, 'filter', stream.filter, oldValue, 'execFilterMethod')]);
-                        resolve();
-                    }
-                }
-            );
-        });
-    }
-
-    removeFilter(stream: Stream): Promise<any> {
-        return new Promise((resolve, reject) => {
-            console.info('Removing filter of stream ' + stream.streamId);
-            this.openvidu.sendRequest(
-                'removeFilter',
-                { streamId: stream.streamId },
-                (error, response) => {
-                    if (error) {
-                        console.error('Error removing filter for Stream ' + stream.streamId, error);
-                        if (error.code === 401) {
-                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to remove a filter"));
-                        } else {
-                            reject(error);
-                        }
-                    } else {
-                        console.info('Filter successfully removed from Stream ' + stream.streamId);
-                        const oldValue = JSON.parse(JSON.stringify(stream.filter));
-                        stream.filter = new Object();
-                        this.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this, stream, 'filter', stream.filter, oldValue, 'applyFilter')]);
-                        stream.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(stream.streamManager, stream, 'filter', stream.filter, oldValue, 'applyFilter')]);
-                        resolve();
-                    }
-                }
-            );
-        });
-    }
-
-    addFilterEventListener(stream: Stream, eventType: string): Promise<any> {
-        return new Promise((resolve, reject) => {
-            console.info('Adding filter event listener to event ' + eventType + ' to stream ' + stream.streamId);
-            this.openvidu.sendRequest(
-                'addFilterEventListener',
-                { streamId: stream.streamId, type: eventType },
-                (error, response) => {
-                    if (error) {
-                        console.error('Error adding filter event listener to event ' + eventType + 'for Stream ' + stream.streamId, error);
-                        if (error.code === 401) {
-                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to add a filter event listener"));
-                        } else {
-                            reject(error);
-                        }
-                    } else {
-                        console.info('Filter event listener to event ' + eventType + ' successfully applied on Stream ' + stream.streamId);
-                        resolve();
-                    }
-                }
-            );
-        });
-    }
-
-    removeFilterEventListener(stream: Stream, eventType: string): Promise<any> {
-        return new Promise((resolve, reject) => {
-            console.info('Removing filter event listener to event ' + eventType + ' to stream ' + stream.streamId);
-            this.openvidu.sendRequest(
-                'removeFilterEventListener',
-                { streamId: stream.streamId, type: eventType },
-                (error, response) => {
-                    if (error) {
-                        console.error('Error removing filter event listener to event ' + eventType + 'for Stream ' + stream.streamId, error);
-                        if (error.code === 401) {
-                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to add a filter event listener"));
-                        } else {
-                            reject(error);
-                        }
-                    } else {
-                        console.info('Filter event listener to event ' + eventType + ' successfully removed on Stream ' + stream.streamId);
-                        resolve();
-                    }
-                }
-            );
-        });
-    }
 
     /**
      * Sends one signal. `signal` object has the following optional properties:
@@ -684,7 +543,7 @@ export class Session implements EventDispatcher {
     /**
      * See [[EventDispatcher.on]]
      */
-    on(type: string, handler: (event: SessionDisconnectedEvent | SignalEvent | StreamEvent | ConnectionEvent | PublisherSpeakingEvent | RecordingEvent | FilterEvent) => void): EventDispatcher {
+    on(type: string, handler: (event: SessionDisconnectedEvent | SignalEvent | StreamEvent | ConnectionEvent | PublisherSpeakingEvent | RecordingEvent) => void): EventDispatcher {
 
         this.ee.on(type, event => {
             if (event) {
@@ -753,7 +612,7 @@ export class Session implements EventDispatcher {
         if (type === 'publisherStartSpeaking' || type === 'publisherStopSpeaking') {
             this.speakingEventsEnabled = false;
 
-            // If there are already available remote streams, disablae hark in all of them
+            // If there are already available remote streams, disable hark in all of them
             for (const connectionId in this.remoteConnections) {
                 const str = this.remoteConnections[connectionId].stream;
                 if (!!str && !!str.speechEvent) {
@@ -912,54 +771,83 @@ export class Session implements EventDispatcher {
      * @hidden
      */
     onStreamPropertyChanged(msg): void {
-        this.getRemoteConnection(msg.connectionId, 'Remote connection ' + msg.connectionId + " unknown when 'onStreamPropertyChanged'. " +
-            'Existing remote connections: ' + JSON.stringify(Object.keys(this.remoteConnections)))
 
-            .then(connection => {
-                if (!!connection.stream && connection.stream.streamId === msg.streamId) {
-                    const stream = connection.stream;
-                    let oldValue;
-                    switch (msg.property) {
-                        case 'audioActive':
-                            oldValue = stream.audioActive;
-                            msg.newValue = msg.newValue === 'true';
-                            stream.audioActive = msg.newValue;
-                            break;
-                        case 'videoActive':
-                            oldValue = stream.videoActive;
-                            msg.newValue = msg.newValue === 'true';
-                            stream.videoActive = msg.newValue;
-                            break;
-                        case 'videoDimensions':
-                            oldValue = stream.videoDimensions;
-                            msg.newValue = JSON.parse(JSON.parse(msg.newValue));
-                            stream.videoDimensions = msg.newValue;
-                            break;
-                        case 'filter':
-                            oldValue = stream.filter;
-                            stream.filter = msg.newValue;
-                            break;
-                    }
-
-                    this.ee.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this, stream, msg.property, msg.newValue, oldValue, msg.reason)]);
-                    stream.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(stream.streamManager, stream, msg.property, msg.newValue, oldValue, msg.reason)]);
-                } else {
-                    console.error("No stream with streamId '" + msg.streamId + "' found for connection '" + msg.connectionId + "' on 'streamPropertyChanged' event");
+        const callback = (connection: Connection) => {
+            if (!!connection.stream && connection.stream.streamId === msg.streamId) {
+                const stream = connection.stream;
+                let oldValue;
+                switch (msg.property) {
+                    case 'audioActive':
+                        oldValue = stream.audioActive;
+                        msg.newValue = msg.newValue === 'true';
+                        stream.audioActive = msg.newValue;
+                        break;
+                    case 'videoActive':
+                        oldValue = stream.videoActive;
+                        msg.newValue = msg.newValue === 'true';
+                        stream.videoActive = msg.newValue;
+                        break;
+                    case 'videoDimensions':
+                        oldValue = stream.videoDimensions;
+                        msg.newValue = JSON.parse(JSON.parse(msg.newValue));
+                        stream.videoDimensions = msg.newValue;
+                        break;
+                    case 'filter':
+                        oldValue = stream.filter;
+                        msg.newValue = (Object.keys(msg.newValue).length > 0) ? msg.newValue : undefined;
+                        if (msg.newValue !== undefined) {
+                            stream.filter = new Filter(msg.newValue.type, msg.newValue.options);
+                            stream.filter.stream = stream;
+                            if (msg.newValue.lastExecMethod) {
+                                stream.filter.lastExecMethod = msg.newValue.lastExecMethod;
+                            }
+                        } else {
+                            delete stream.filter;
+                        }
+                        msg.newValue = stream.filter;
+                        break;
                 }
-            })
-            .catch(openViduError => {
-                console.error(openViduError);
-            });
+                this.ee.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this, stream, msg.property, msg.newValue, oldValue, msg.reason)]);
+                stream.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(stream.streamManager, stream, msg.property, msg.newValue, oldValue, msg.reason)]);
+            } else {
+                console.error("No stream with streamId '" + msg.streamId + "' found for connection '" + msg.connectionId + "' on 'streamPropertyChanged' event");
+            }
+        };
+
+        if (msg.connectionId === this.connection.connectionId) {
+            // Your stream has been forcedly changed (filter feature)
+            callback(this.connection);
+        } else {
+            this.getRemoteConnection(msg.connectionId, 'Remote connection ' + msg.connectionId + " unknown when 'onStreamPropertyChanged'. " +
+                'Existing remote connections: ' + JSON.stringify(Object.keys(this.remoteConnections)))
+                .then(connection => {
+                    callback(connection);
+                })
+                .catch(openViduError => {
+                    console.error(openViduError);
+                });
+        }
     }
 
     /**
      * @hidden
      */
     recvIceCandidate(msg): void {
-        const candidate = {
+        const candidate: RTCIceCandidate = {
             candidate: msg.candidate,
+            component: msg.component,
+            foundation: msg.foundation,
+            ip: msg.ip,
+            port: msg.port,
+            priority: msg.priority,
+            protocol: msg.protocol,
+            relatedAddress: msg.relatedAddress,
+            relatedPort: msg.relatedPort,
             sdpMid: msg.sdpMid,
             sdpMLineIndex: msg.sdpMLineIndex,
+            tcpType: msg.tcpType,
+            usernameFragment: msg.usernameFragment,
+            type: msg.type,
             toJSON: () => {
                 return { candidate: msg.candidate };
             }
@@ -1061,9 +949,9 @@ export class Session implements EventDispatcher {
         const streamId: string = response.streamId;
         this.getConnection(connectionId, 'No connection found for connectionId ' + connectionId)
             .then(connection => {
+                console.info('Filter event dispatched');
                 const stream: Stream = connection.stream;
-                stream.ee.emitEvent('filterEventDispatched', [new FilterEvent(stream, stream.filter, response.eventType, response.data)]);
-                this.ee.emitEvent('filterEventDispatched', [new FilterEvent(stream, stream.filter, response.eventType, response.data)]);
+                stream.filter.handlers[response.eventType](new FilterEvent(stream.filter, response.eventType, response.data));
             });
     }
 

@@ -17,6 +17,7 @@
 
 import { Connection } from './Connection';
 import { Event } from '../OpenViduInternal/Events/Event';
+import { Filter } from './Filter';
 import { Session } from './Session';
 import { StreamManager } from './StreamManager';
 import { EventDispatcher } from '../OpenViduInternal/Interfaces/Public/EventDispatcher';
@@ -25,6 +26,7 @@ import { OutboundStreamOptions } from '../OpenViduInternal/Interfaces/Private/Ou
 import { WebRtcPeer, WebRtcPeerSendonly, WebRtcPeerRecvonly, WebRtcPeerSendrecv } from '../OpenViduInternal/WebRtcPeer/WebRtcPeer';
 import { WebRtcStats } from '../OpenViduInternal/WebRtcStats/WebRtcStats';
 import { PublisherSpeakingEvent } from '../OpenViduInternal/Events/PublisherSpeakingEvent';
+import { StreamPropertyChangedEvent } from '../OpenViduInternal/Events/StreamPropertyChangedEvent';
 
 import EventEmitter = require('wolfy87-eventemitter');
 import hark = require('hark');
@@ -105,17 +107,11 @@ export class Stream implements EventDispatcher {
     /**
      * **WARNING**: experimental option. This interface may change in the near future
      *
-     * Filter applied to the Stream. You can apply filters by calling [[Session.applyFilter]], execute methods of the applied filter with
-     * [[Session.execFilterMethod]] and remove it with [[Session.removeFilter]]. Be aware that the client calling this methods must have the
+     * Filter applied to the Stream. You can apply filters by calling [[Stream.applyFilter]], execute methods of the applied filter with
+     * [[Filter.execMethod]] and remove it with [[Stream.removeFilter]]. Be aware that the client calling this methods must have the
      * necessary permissions: the token owned by the client must have been initialized with the appropriated `allowedFilters` array.
      */
-    filter: {
-        type?: string,
-        options?: Object,
-        lastExecMethod?: {
-            method: string, params: Object
-        }
-    } = {};
+    filter: Filter;
 
     /**
      * Keeps tracks unstopped on disposal. Allows to keep tracks running if session is diposed
@@ -190,7 +186,7 @@ export class Stream implements EventDispatcher {
                 this.frameRate = (this.inboundStreamOpts.frameRate === -1) ? undefined : this.inboundStreamOpts.frameRate;
                 this.videoDimensions = this.inboundStreamOpts.videoDimensions;
             }
-            if (!!this.inboundStreamOpts.filter) {
+            if (!!this.inboundStreamOpts.filter && (Object.keys(this.inboundStreamOpts.filter).length > 0)) {
                 if (!!this.inboundStreamOpts.filter.lastExecMethod && Object.keys(this.inboundStreamOpts.filter.lastExecMethod).length === 0) {
                     delete this.inboundStreamOpts.filter.lastExecMethod;
                 }
@@ -272,6 +268,79 @@ export class Stream implements EventDispatcher {
             this.ee.off(type, handler);
         }
         return this;
+    }
+
+
+    /**
+     * Applies an audio/video filter to the stream.
+     *
+     * @param type Type of filter applied. See [[Filter.type]]
+     * @param options Parameters used to initialize the filter. See [[Filter.options]]
+     *
+     * @returns A Promise (to which you can optionally subscribe to) that is resolved to the applied filter if success and rejected with an Error object if not
+     */
+    applyFilter(type: string, options: Object): Promise<Filter> {
+        return new Promise((resolve, reject) => {
+            console.info('Applying filter to stream ' + this.streamId);
+            options = !!options ? options : {};
+            if (typeof options !== 'string') {
+                options = JSON.stringify(options);
+            }
+            this.session.openvidu.sendRequest(
+                'applyFilter',
+                { streamId: this.streamId, type, options },
+                (error, response) => {
+                    if (error) {
+                        console.error('Error applying filter for Stream ' + this.streamId, error);
+                        if (error.code === 401) {
+                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to apply a filter"));
+                        } else {
+                            reject(error);
+                        }
+                    } else {
+                        console.info('Filter successfully applied on Stream ' + this.streamId);
+                        const oldValue: Filter = this.filter;
+                        this.filter = new Filter(type, options);
+                        this.filter.stream = this;
+                        this.session.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this.session, this, 'filter', this.filter, oldValue, 'applyFilter')]);
+                        this.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this.streamManager, this, 'filter', this.filter, oldValue, 'applyFilter')]);
+                        resolve(this.filter);
+                    }
+                }
+            );
+        });
+    }
+
+    /**
+     * Removes an audio/video filter previously applied.
+     *
+     * @returns A Promise (to which you can optionally subscribe to) that is resolved if the previously applied filter has been successfully removed and rejected with an Error object in other case
+     */
+    removeFilter(): Promise<any> {
+        return new Promise((resolve, reject) => {
+            console.info('Removing filter of stream ' + this.streamId);
+            this.session.openvidu.sendRequest(
+                'removeFilter',
+                { streamId: this.streamId },
+                (error, response) => {
+                    if (error) {
+                        console.error('Error removing filter for Stream ' + this.streamId, error);
+                        if (error.code === 401) {
+                            reject(new OpenViduError(OpenViduErrorName.OPENVIDU_PERMISSION_DENIED, "You don't have permissions to remove a filter"));
+                        } else {
+                            reject(error);
+                        }
+                    } else {
+                        console.info('Filter successfully removed from Stream ' + this.streamId);
+                        const oldValue = this.filter;
+                        delete this.filter;
+                        this.session.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this.session, this, 'filter', this.filter, oldValue, 'applyFilter')]);
+                        this.streamManager.emitEvent('streamPropertyChanged', [new StreamPropertyChangedEvent(this.streamManager, this, 'filter', this.filter, oldValue, 'applyFilter')]);
+                        resolve();
+                    }
+                }
+            );
+        });
     }
 
 
@@ -373,7 +442,9 @@ export class Stream implements EventDispatcher {
      */
     disposeWebRtcPeer(): void {
         if (this.webRtcPeer) {
-            this.webRtcPeer.dispose(this.keepTracksOnDispose);
+            const isSenderAndCustomTrack: boolean = !!this.outboundStreamOpts &&
+                this.outboundStreamOpts.publisherProperties.videoSource instanceof MediaStreamTrack;
+            this.webRtcPeer.dispose(isSenderAndCustomTrack);
         }
         if (this.speechEvent) {
             this.speechEvent.stop();
@@ -645,7 +716,15 @@ export class Stream implements EventDispatcher {
     }
 
     private remotePeerSuccessfullyEstablished(): void {
-        this.mediaStream = this.webRtcPeer.pc.getRemoteStreams()[0];
+        this.mediaStream = new MediaStream();
+
+        let receiver: RTCRtpReceiver;
+        for (receiver of this.webRtcPeer.pc.getReceivers()) {
+            if (!!receiver.track) {
+                this.mediaStream.addTrack(receiver.track);
+            }
+        }
+
         console.debug('Peer remote stream', this.mediaStream);
 
         if (!!this.mediaStream) {
