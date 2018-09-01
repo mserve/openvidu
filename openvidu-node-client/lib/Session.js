@@ -80,7 +80,8 @@ var Session = /** @class */ (function () {
             var data = JSON.stringify({
                 session: _this.sessionId,
                 role: (!!tokenOptions && !!tokenOptions.role) ? tokenOptions.role : OpenViduRole_1.OpenViduRole.PUBLISHER,
-                data: (!!tokenOptions && !!tokenOptions.data) ? tokenOptions.data : ''
+                data: (!!tokenOptions && !!tokenOptions.data) ? tokenOptions.data : '',
+                kurentoOptions: (!!tokenOptions && !!tokenOptions.kurentoOptions) ? tokenOptions.kurentoOptions : {},
             });
             axios_1.default.post('https://' + OpenVidu_1.OpenVidu.hostname + ':' + OpenVidu_1.OpenVidu.port + OpenVidu_1.OpenVidu.API_TOKENS, data, {
                 headers: {
@@ -106,11 +107,11 @@ var Session = /** @class */ (function () {
                     // The request was made but no response was received
                     // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
                     // http.ClientRequest in node.js
-                    console.error(error.request);
+                    reject(new Error(error.request));
                 }
                 else {
                     // Something happened in setting up the request that triggered an Error
-                    console.error('Error', error.message);
+                    reject(new Error(error.message));
                 }
             });
         });
@@ -149,11 +150,11 @@ var Session = /** @class */ (function () {
                     // The request was made but no response was received
                     // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
                     // http.ClientRequest in node.js
-                    console.error(error.request);
+                    reject(new Error(error.request));
                 }
                 else {
                     // Something happened in setting up the request that triggered an Error
-                    console.error('Error', error.message);
+                    reject(new Error(error.message));
                 }
             });
         });
@@ -197,11 +198,11 @@ var Session = /** @class */ (function () {
                     // The request was made but no response was received
                     // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
                     // http.ClientRequest in node.js
-                    console.error(error.request);
+                    reject(new Error(error.request));
                 }
                 else {
                     // Something happened in setting up the request that triggered an Error
-                    console.error('Error', error.message);
+                    reject(new Error(error.message));
                 }
             });
         });
@@ -267,11 +268,11 @@ var Session = /** @class */ (function () {
                     // The request was made but no response was received
                     // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
                     // http.ClientRequest in node.js
-                    console.error(error.request);
+                    reject(new Error(error.request));
                 }
                 else {
                     // Something happened in setting up the request that triggered an Error
-                    console.error('Error', error.message);
+                    reject(new Error(error.message));
                 }
             });
         });
@@ -320,11 +321,11 @@ var Session = /** @class */ (function () {
                     // The request was made but no response was received
                     // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
                     // http.ClientRequest in node.js
-                    console.error(error.request);
+                    reject(new Error(error.request));
                 }
                 else {
                     // Something happened in setting up the request that triggered an Error
-                    console.error('Error', error.message);
+                    reject(new Error(error.message));
                 }
             });
         });
@@ -377,11 +378,11 @@ var Session = /** @class */ (function () {
                     // The request was made but no response was received
                     // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
                     // http.ClientRequest in node.js
-                    console.error(error.request);
+                    reject(new Error(error.request));
                 }
                 else {
                     // Something happened in setting up the request that triggered an Error
-                    console.error('Error', error.message);
+                    reject(new Error(error.message));
                 }
             });
         });
